@@ -209,9 +209,49 @@ select{border-radius:14px;background:var(--card)}
 .ax-label b{display:block;font:600 16px var(--serif);color:var(--text)}
 .ax-label-y{top:34px;left:calc(50% + 10px)}
 .ax-label-x{right:10px;top:calc(50% + 10px);text-align:right}
-.dot{--c:var(--accent);position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--sans);color:#fff;background:var(--c);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);touch-action:none;z-index:2}
+.dot{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--sans);color:#fff;background:var(--c,var(--accent));border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);touch-action:none;z-index:2}
 .dot.mine{cursor:grab}
 .dot.sel{outline:3px solid var(--lime)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:-4px 0 18px;font-size:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:50%;background:var(--c);display:inline-block}
+.legend b{font-weight:600}
+.legend em{font-style:normal;color:var(--muted)}
+/* Reflection: 1-5 scale like the workshop slides */
+.rq{padding:18px 0;border-bottom:1px solid var(--line)}
+.rq:first-child{padding-top:4px}
+.rq h3{font-size:20px;margin:0 0 14px}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);position:relative}
+.scale::before{content:"";position:absolute;left:4%;right:4%;top:calc(100% - 11px);height:1.5px;background:var(--accent);opacity:.5}
+.pt{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;position:relative;z-index:1}
+.pt .n{font:700 26px var(--sans);color:var(--accent)}
+.pt input{position:absolute;opacity:0;width:1px;height:1px}
+.pt .c{width:22px;height:22px;border-radius:50%;background:var(--card);border:3px solid var(--accent);transition:transform .12s}
+.pt input:checked + .c{background:var(--accent);transform:scale(1.25)}
+.pt input:focus-visible + .c{outline:3px solid var(--lime);outline-offset:2px}
+.anch{display:flex;justify-content:space-between;gap:16px;margin-top:14px;font-size:14px;color:var(--text)}
+.anch span{max-width:46%}
+.anch span:last-child{text-align:right}
+#rForm.locked{opacity:.8}
+.radar{width:100%;max-width:640px;height:auto;display:block;margin:6px auto 12px}
+.radar text{fill:var(--text);font-family:var(--sans)}
+.radar .ring{fill:none;stroke:var(--line);stroke-width:1}
+.radar .axis{stroke:var(--muted);stroke-width:1;opacity:.6}
+.radar .area{fill:var(--accent);fill-opacity:.25;stroke:var(--accent);stroke-width:3;stroke-linejoin:round}
+.radar .pt2{fill:var(--accent);stroke:var(--card);stroke-width:2}
+.radar .tick{fill:var(--muted);font-size:13px}
+.radar .lab{font-size:19px;font-weight:600}
+.radar .val{font-size:22px;fill:var(--accent);font-weight:700}
+/* admin completion bars */
+.progress{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.progress .big{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:6px}
+.progress .big b{font:600 26px var(--serif);color:var(--accent)}
+.progress .bar2{height:12px;border-radius:999px;background:var(--line);overflow:hidden}
+.progress .bar2 i{display:block;height:100%;background:var(--lime);border-radius:999px;transition:width .4s}
+.progress .detail{font-size:14px;color:var(--muted);margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips span{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--soft);color:var(--text)}
+.chips span.cur{background:var(--lime);color:var(--lime-ink);font-weight:600}
 .badge{flex:none;min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--sans);color:#fff;background:var(--c,var(--accent))}
 .item.pick{cursor:pointer}
 .item.sel{outline:3px solid var(--lime)}
@@ -241,6 +281,7 @@ select{border-radius:14px;background:var(--card)}
       <a href="#matrix" id="nav-matrix">Matrix</a>
       <a href="#baby" id="nav-baby">Baby Steps</a>
       <a href="#export" id="nav-export">Export</a>
+      <a href="#reflect" id="nav-reflect">Reflection</a>
     </nav>
     <label class="name">Your Team
       <select id="myName"><option value="">Choose team</option><option>Team 1</option><option>Team 2</option><option>Team 3</option><option>Team 4</option><option>Team 5</option><option>Team 6</option></select>
@@ -345,6 +386,7 @@ select{border-radius:14px;background:var(--card)}
       <div class="ax-label ax-label-y"><b>Impact</b><span>How much will this improve our stakeholder partnership?</span></div>
       <div class="ax-label ax-label-x"><b>Effort</b><span>How much time, money, or energy will this take to implement?</span></div>
     </div>
+    <div class="legend" id="mLegend"></div>
     <div id="mList" class="list"></div>
   </section>
 
@@ -384,6 +426,24 @@ select{border-radius:14px;background:var(--card)}
       <p class="hint">Re-issue a PDF for anyone who lost theirs. Each one contains that person's own Baby Steps, so send it only to them.</p>
       <div class="row"><input id="eFind" placeholder="Search a name"><button type="button" class="ghost" id="eRefresh">Refresh</button><button type="button" id="eZip">Download all (ZIP)</button></div>
       <div id="ePeople" class="list"></div>
+    </div>
+  </section>
+
+  <!-- PAGE 7: Reflection -->
+  <section id="page-reflect" class="hide">
+    <h2>Reflection</h2>
+    <p class="sub">Four quick questions about today. Your answers are anonymous: only the group average is shown.</p>
+    <div class="studline"></div>
+    <form class="card" id="rForm">
+      <div id="rQs"></div>
+      <div class="row"><button type="submit" id="rSubmit">Submit my reflection</button><span class="sub" id="rStatus" style="margin:0"></span></div>
+    </form>
+    <div class="card hide" id="rAdmin" style="margin-top:18px">
+      <h3 style="margin:0 0 4px">Admin · Group reflection</h3>
+      <p class="hint" id="rCount"></p>
+      <div id="rRadar"></div>
+      <div id="rTable" class="list"></div>
+      <div class="row" style="margin-top:12px"><button type="button" class="ghost" id="rRefresh">Refresh</button></div>
     </div>
   </section>
 </main>
@@ -429,10 +489,26 @@ const STAGES=[
   {id:"matrix",  name:"Action Matrix",       page:"matrix",    what:"Place your team's commitments on the Impact × Effort matrix."},
   {id:"baby",    name:"Baby Steps",          page:"baby",      what:"Write your own Baby Steps toward a Bold Commitment. They stay private."},
   {id:"export",  name:"Export",              page:"export",    what:"Download your PDF: Shared Wisdom, Bold Commitments and your Baby Steps."},
+  {id:"reflection", name:"Reflection",       page:"reflect",   what:"Answer four short questions about today. Only the group average is shown."},
 ];
+const EXPECTED_TEAMS=6, EXPECTED_PEOPLE=24;      // used for the admin's completion bars
 const stageIdx=id=>Math.max(0,STAGES.findIndex(s=>s.id===id));
-const PAGES=["photos","sentences","dream","commit","matrix","baby","export"];
-const PAGE_UNLOCK={photos:"ripples",sentences:"writing",dream:"dream",commit:"commit",matrix:"matrix",baby:"baby",export:"export"};
+const PAGES=["photos","sentences","dream","commit","matrix","baby","export","reflect"];
+const PAGE_UNLOCK={photos:"ripples",sentences:"writing",dream:"dream",commit:"commit",matrix:"matrix",baby:"baby",export:"export",reflect:"reflection"};
+const REFLECT_QS=[
+  {short:"New ideas from others", q:"Did I get new ideas from others?",
+   lo:"I only heard familiar perspectives; no out-of-the-box thinking.",
+   hi:"I gained breakthrough solutions from global/cross-team partners that will highly enrich our future plans."},
+  {short:"Safe to share", q:"Did I feel safe to share my real challenges?",
+   lo:"I held back and hesitated to share my real challenges today.",
+   hi:"I felt completely safe. Even when my opinions differed from others, they were fully respected and accepted."},
+  {short:"Helpful wisdom", q:"Is the Shared Wisdom helpful for me?",
+   lo:"Just empty talk. It doesn't apply to our daily collaboration with key stakeholders.",
+   hi:"I can instantly apply some of them next Monday to provide real support to my stakeholders."},
+  {short:"Partnership mindset", q:"Is my partnership mindset stronger today?",
+   lo:"My mindset remains the same. I will just go back to my usual way of handling stakeholders.",
+   hi:"My mindset is significantly stronger. I am fully anchored in my identity as a professional business partner, ready for any challenge."},
+];
 const CATS=[
   {id:"A",name:"Meeting Mechanisms"},
   {id:"B",name:"Performance & Development Dialogues"},
@@ -464,7 +540,7 @@ let sb = null, demo = false;
 try { if (window.supabase) sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e){}
 if (!sb) demo = true;
 
-const mem = { photos:[], sentences:[], votes:[], dreams:[], commitments:[], baby:[], phase:"ripples" };
+const mem = { photos:[], sentences:[], votes:[], dreams:[], commitments:[], baby:[], reflections:{}, phase:"ripples" };
 function seedDemo(){
   const svg = (c,t)=>"data:image/svg+xml;utf8,"+encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='800' height='800' fill='${c}'/><text x='400' y='420' font-size='64' fill='white' text-anchor='middle' font-family='sans-serif'>${t}</text></svg>`);
   mem.photos = [["#4f46e5","Demo 1"],["#0e9f6e","Demo 2"],["#e0803a","Demo 3"],["#c2410c","Demo 4"]]
@@ -524,6 +600,13 @@ const api = {
     const {data,error}=await sb.from("commitments").delete().eq("id",id).select(); if(error) throw error;
     if(!data.length) throw new Error("Not allowed. Please log in as admin."); },
   // Baby Steps are private: the database only exposes them through these three functions, matched by name
+  async submitReflection(a){                       // answers are private; the database keeps one row per device
+    if(demo){ mem.reflections[voterId]=a.slice(); return; }
+    const {error}=await sb.rpc("submit_reflection",{p_voter:voterId,p1:a[0],p2:a[1],p3:a[2],p4:a[3]}); if(error) throw error; },
+  async reflectionSummary(){                       // admin only: per-question average and number of responses
+    if(demo){ const rows=Object.values(mem.reflections);
+      return [0,1,2,3].map(i=>({question:i+1,avg_score:rows.length?rows.reduce((s,r)=>s+r[i],0)/rows.length:null,responses:rows.length})); }
+    const {data,error}=await sb.rpc("admin_reflection_summary"); if(error) throw error; return data; },
   async adminBaby(){ if(demo) return mem.baby.slice();            // admin only: every participant's steps, to re-issue a lost PDF
     const {data,error}=await sb.rpc("admin_all_baby_steps"); if(error) throw error; return data; },
   async myBaby(name){ if(demo) return mem.baby.filter(b=>b.name.toLowerCase()===name.toLowerCase());
@@ -583,6 +666,7 @@ function route(p){
   try { history.replaceState(null, "", "#" + p); } catch(e){}
   PAGES.forEach(k=>{ $("page-"+k).classList.toggle("hide", k!==p); $("nav-"+k).classList.toggle("on", k===p); });
   if(appReady && p==="export"){ if(adminUI()) loadAllBaby(); schedulePrepare(); }   // fresh admin list; pre-build the PDF to share
+  if(appReady && p==="reflect" && adminUI()) loadReflectSummary();
 }
 // Participants can open a page once its stage has started; the admin can open everything
 const canOpen=p=>adminUI() || stageIdx(phase)>=stageIdx(PAGE_UNLOCK[p]);
@@ -613,10 +697,11 @@ function renderStage(){
     const back=document.createElement("button"); back.className="ghost"; back.textContent="‹ Back"; back.disabled=i===0; back.onclick=()=>go(i-1);
     const next=document.createElement("button"); next.textContent=i<STAGES.length-1?`Open next: ${STAGES[i+1].name} ›`:"Last stage"; next.disabled=i===STAGES.length-1; next.onclick=()=>go(i+1);
     ctl.append(back,next); bar.append(ctl);
+    const pr=document.createElement("div"); pr.id="progress"; pr.className="progress"; bar.append(pr); renderProgress();
   }
 }
 function renderAll(){
-  renderStage(); applyNav(); renderPhotos(); renderSentences(); renderDream(); renderCommit(); renderMatrix(); renderBaby(); renderExport();
+  renderStage(); applyNav(); renderPhotos(); renderSentences(); renderDream(); renderCommit(); renderMatrix(); renderBaby(); renderExport(); renderReflect();
 }
 async function loadPhase(){
   try{
@@ -673,7 +758,7 @@ $("file").addEventListener("change", async e=>{
   setTimeout(()=>$("upStatus").textContent="",3000);
   loadPhotos();
 });
-async function loadPhotos(){ try{ photos=await api.photos(); renderPhotos(); }catch(e){ console.error(e); } }
+async function loadPhotos(){ try{ photos=await api.photos(); renderPhotos(); renderProgress(); }catch(e){ console.error(e); } }
 
 /* ---------- Page 2: sentences ---------- */
 let sentences=[], votes=[], tpl=TEMPLATES[0], sortOn=false;
@@ -756,7 +841,7 @@ async function toggleVote(id,has){
 }
 $("sortBtn").onclick=()=>{ sortOn=!sortOn; renderSentences(); };
 
-async function loadSentences(){ try{ [sentences,votes]=await Promise.all([api.sentences(),api.votes()]); renderSentences(); renderExport(); }catch(e){ console.error(e); } }
+async function loadSentences(){ try{ [sentences,votes]=await Promise.all([api.sentences(),api.votes()]); renderSentences(); renderExport(); renderProgress(); }catch(e){ console.error(e); } }
 
 /* ---------- Page: Dream (one photo + headline per team) ---------- */
 let dreams=[];
@@ -802,7 +887,7 @@ $("dForm").addEventListener("submit", async e=>{
   }catch(err){ toast("Could not share: "+(err.message||err)); }
   $("dStatus").textContent=""; $("dSubmit").disabled=false;
 });
-async function loadDreams(){ try{ dreams=await api.dreams(); renderDream(); renderExport(); }catch(e){ console.error(e); } }
+async function loadDreams(){ try{ dreams=await api.dreams(); renderDream(); renderExport(); renderProgress(); }catch(e){ console.error(e); } }
 
 /* ---------- Page 3: Bold Commitments ---------- */
 let commitments=[], cat=CATS[0];
@@ -857,7 +942,7 @@ function renderCommit(){
     box.append(g);
   });
 }
-async function loadCommitments(){ try{ commitments=await api.commitments(); renderCommit(); renderMatrix(); renderBaby(); renderExport(); }catch(e){ console.error(e); } }
+async function loadCommitments(){ try{ commitments=await api.commitments(); renderCommit(); renderMatrix(); renderBaby(); renderExport(); renderProgress(); }catch(e){ console.error(e); } }
 
 /* ---------- Page 4: Matrix ---------- */
 let selId=null, dragging=false;
@@ -921,6 +1006,14 @@ function renderMatrix(){
     d.style.left=c.x*100+"%"; d.style.top=c.y*100+"%"; d.textContent=cNum(c); d.title=c.text;
     if(own) attachDrag(d,c);
     m.append(d);
+  });
+  const lg=$("mLegend"); lg.innerHTML="";          // how many commitments each category has put on the board
+  CATS.forEach(cg=>{
+    const all=commitments.filter(c=>c.category===cg.id), placed=all.filter(c=>c.x!=null).length;
+    const s=document.createElement("span"); s.className="c"+cg.id; s.innerHTML="<i></i><b></b><em></em>";
+    s.querySelector("b").textContent=`${cg.id} ${cg.name}`;
+    s.querySelector("em").textContent=` ${placed} placed${all.length>placed?` · ${all.length-placed} to go`:""}`;
+    lg.append(s);
   });
   const box=$("mList"); box.innerHTML="";
   if(!commitments.length){ box.innerHTML='<div class="empty">No commitments yet.</div>'; return; }
@@ -1012,6 +1105,131 @@ function renderExport(){
   schedulePrepare();
 }
 
+/* ---------- Page 8: Reflection ---------- */
+let myReflect=null, reflectSummary=[];
+try{ myReflect=JSON.parse(localStorage.getItem("reflection")||"null"); }catch(e){}
+REFLECT_QS.forEach((item,i)=>{
+  const wrap=document.createElement("div"); wrap.className="rq";
+  const h=document.createElement("h3"); h.textContent=`${i+1}. ${item.q}`;
+  const sc=document.createElement("div"); sc.className="scale";
+  for(let v=1;v<=5;v++){
+    const l=document.createElement("label"); l.className="pt";
+    l.innerHTML='<span class="n"></span><input type="radio" required><span class="c"></span>';
+    l.querySelector(".n").textContent=v;
+    const inp=l.querySelector("input"); inp.name="rq"+i; inp.value=v; inp.setAttribute("aria-label",`${item.q} ${v} of 5`);
+    sc.append(l);
+  }
+  const an=document.createElement("div"); an.className="anch"; an.innerHTML="<span></span><span></span>";
+  an.children[0].textContent="1 · "+item.lo; an.children[1].textContent="5 · "+item.hi;
+  wrap.append(h,sc,an); $("rQs").append(wrap);
+});
+function renderReflect(){
+  const open=phase==="reflection"&&!proj, f=$("rForm");
+  f.classList.toggle("locked",!open);
+  [...f.elements].forEach(el=>{ el.disabled=!open; });
+  if(myReflect) myReflect.forEach((v,i)=>{ const r=f.querySelector(`input[name=rq${i}][value="${v}"]`); if(r) r.checked=true; });
+  $("rSubmit").textContent = myReflect ? "Update my reflection" : "Submit my reflection";
+  $("rStatus").textContent = open ? "" : stageIdx(phase)<stageIdx("reflection") ? "Opens at the last stage of the workshop." : "This stage is closed.";
+  renderReflectAdmin();
+}
+$("rForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const a=REFLECT_QS.map((_,i)=>{ const r=$("rForm").querySelector(`input[name=rq${i}]:checked`); return r?+r.value:0; });
+  if(a.some(v=>!v)) return;
+  $("rSubmit").disabled=true;
+  try{ await api.submitReflection(a); myReflect=a; try{ localStorage.setItem("reflection",JSON.stringify(a)); }catch(_){}
+    toast("Thank you ✓"); renderReflect(); $("rStatus").textContent="Saved. You can change your answers until this stage closes."; loadReflectSummary(); }
+  catch(err){ toast("Could not save: "+(err.message||err)); }
+  $("rSubmit").disabled=false;
+});
+async function loadReflectSummary(){
+  if(!adminUI()){ reflectSummary=[]; renderReflectAdmin(); return; }
+  try{ reflectSummary=await api.reflectionSummary(); }catch(e){ console.error(e); reflectSummary=[]; }
+  renderReflectAdmin(); renderProgress();
+}
+$("rRefresh").onclick=loadReflectSummary;
+function radarSVG(avgs){                          // 0 at the center, 5 on the outer ring; one labelled axis per question
+  const NS="http://www.w3.org/2000/svg", W=760, H=440, cx=W/2, cy=H/2, R=120;
+  const svg=document.createElementNS(NS,"svg"); svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("class","radar");
+  svg.setAttribute("role","img"); svg.setAttribute("aria-label","Radar chart of the four reflection questions, 0 at the center and 5 on the outer ring");
+  const ang=[-90,0,90,180].map(d=>d*Math.PI/180), pt=(i,r)=>[cx+r*Math.cos(ang[i]), cy+r*Math.sin(ang[i])];
+  const el=(t,a,txt)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; svg.append(e); return e; };
+  for(let k=1;k<=5;k++) el("polygon",{class:"ring",points:[0,1,2,3].map(i=>pt(i,R*k/5).join(",")).join(" ")});
+  [0,1,2,3].forEach(i=>{ const [x,y]=pt(i,R); el("line",{class:"axis",x1:cx,y1:cy,x2:x,y2:y}); });
+  for(let k=1;k<=5;k++) el("text",{class:"tick",x:cx+5,y:cy-R*k/5-3},String(k));
+  el("text",{class:"tick",x:cx+6,y:cy+14},"0");
+  const have=avgs.some(v=>v!=null);
+  if(have){
+    const pts=avgs.map((v,i)=>pt(i,R*(v||0)/5));
+    el("polygon",{class:"area",points:pts.map(p=>p.join(",")).join(" ")});
+    pts.forEach(p=>el("circle",{class:"pt2",cx:p[0],cy:p[1],r:5}));
+  } else el("text",{x:cx,y:cy+R+60,"text-anchor":"middle",class:"tick"},"No answers yet");
+  const pos=[ {x:cx,y:cy-R-44,a:"middle"}, {x:cx+R+18,y:cy-4,a:"start"}, {x:cx,y:cy+R+28,a:"middle"}, {x:cx-R-18,y:cy-4,a:"end"} ];
+  REFLECT_QS.forEach((q,i)=>{
+    const p=pos[i];
+    el("text",{class:"val",x:p.x,y:p.y,"text-anchor":p.a},`Q${i+1} · ${avgs[i]!=null?Number(avgs[i]).toFixed(1):"–"}`);
+    el("text",{class:"lab",x:p.x,y:p.y+22,"text-anchor":p.a},q.short);
+  });
+  return svg;
+}
+function renderReflectAdmin(){
+  $("rAdmin").classList.toggle("hide",!adminUI());
+  if(!adminUI()) return;
+  const by={}; reflectSummary.forEach(r=>{ by[r.question]=r; });
+  const avgs=REFLECT_QS.map((_,i)=>by[i+1]&&by[i+1].avg_score!=null?Number(by[i+1].avg_score):null);
+  const n=reflectSummary.length?Math.max(...reflectSummary.map(r=>Number(r.responses))):0;
+  $("rCount").textContent=`${n} of ${EXPECTED_PEOPLE} participants have answered. Center = 0, outer ring = 5.`;
+  const rad=$("rRadar"); rad.innerHTML=""; rad.append(radarSVG(avgs));
+  const box=$("rTable"); box.innerHTML="";
+  REFLECT_QS.forEach((q,i)=>{
+    const d=document.createElement("div"); d.className="item";
+    const b=document.createElement("div"); b.className="badge"; b.textContent=i+1;
+    const t=document.createElement("div"); t.className="t"; t.textContent=q.q;
+    const sm=document.createElement("small"); sm.textContent=avgs[i]!=null?`Average ${avgs[i].toFixed(2)} of 5`:"No answers yet"; t.append(sm);
+    d.append(b,t); box.append(d);
+  });
+}
+
+/* ---------- Admin: completion of each interactive step ---------- */
+const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
+const teamSet=names=>new Set(names.filter(t=>TEAMS.includes(t)));
+function progressFor(id){
+  switch(id){
+    case "ripples":{ const d=teamSet(photos.map(p=>p.author)).size; return {done:d,total:EXPECTED_TEAMS,unit:"teams",detail:`${d} of ${EXPECTED_TEAMS} teams uploaded a Ripple photo`}; }
+    case "writing":{ const d=teamSet(sentences.map(s=>s.author)).size; return {done:d,total:EXPECTED_TEAMS,unit:"teams",detail:`${d} of ${EXPECTED_TEAMS} teams added a sentence · ${sentences.length} sentences in total`}; }
+    case "voting":{ const per={}; votes.forEach(v=>{ per[v.voter_id]=(per[v.voter_id]||0)+1; });
+      const full=Object.values(per).filter(c=>c>=MAX_VOTES).length, any=Object.keys(per).length;
+      return {done:full,total:EXPECTED_PEOPLE,unit:"people",detail:`${full} used all ${MAX_VOTES} votes · ${any} voted at all`}; }
+    case "dream":{ const d=teamSet(dreams.map(x=>x.team)).size; return {done:d,total:EXPECTED_TEAMS,unit:"teams",detail:`${d} of ${EXPECTED_TEAMS} teams shared a Dream`}; }
+    case "commit":{ const by={}; commitments.forEach(c=>{ (by[c.team]=by[c.team]||[]).push(c); });
+      const ok=TEAMS.filter(t=>by[t]&&by[t].length>=2&&new Set(by[t].map(c=>c.category)).size>=2).length, started=TEAMS.filter(t=>by[t]).length;
+      return {done:ok,total:EXPECTED_TEAMS,unit:"teams",detail:`${ok} teams have 2+ commitments from different categories · ${started} teams started · ${commitments.length} commitments`}; }
+    case "matrix":{ const placed=commitments.filter(c=>c.x!=null).length;
+      return {done:placed,total:commitments.length,unit:"commitments",detail:commitments.length?`${placed} of ${commitments.length} commitments placed on the matrix`:"No commitments yet"}; }
+    case "baby":{ const n=people().length; return {done:n,total:EXPECTED_PEOPLE,unit:"people",detail:`${n} of ${EXPECTED_PEOPLE} people saved at least one Baby Step`}; }
+    case "reflection":{ const n=reflectSummary.length?Math.max(...reflectSummary.map(r=>Number(r.responses))):0;
+      return {done:n,total:EXPECTED_PEOPLE,unit:"people",detail:`${n} of ${EXPECTED_PEOPLE} people answered`}; }
+  }
+  return null;                                    // Export: downloads are not tracked
+}
+function renderProgress(){
+  const box=$("progress"); if(!box) return;
+  if(!adminUI()){ box.innerHTML=""; return; }
+  const cur=progressFor(phase); box.innerHTML="";
+  const big=document.createElement("div"); big.className="big";
+  if(cur){
+    big.innerHTML="<b></b><span></span>"; big.firstChild.textContent=pct(cur.done,cur.total)+"%";
+    big.lastChild.textContent=`${cur.done} / ${cur.total} ${cur.unit} done`;
+    const bar=document.createElement("div"); bar.className="bar2"; bar.innerHTML="<i></i>"; bar.firstChild.style.width=pct(cur.done,cur.total)+"%";
+    const dt=document.createElement("div"); dt.className="detail"; dt.textContent=cur.detail;
+    box.append(big,bar,dt);
+  } else { big.textContent="Completion is not tracked for this step (downloads happen on each person's own device)."; big.style.color="var(--muted)"; box.append(big); }
+  const chips=document.createElement("div"); chips.className="chips";
+  STAGES.forEach(s=>{ const p=progressFor(s.id); if(!p) return;
+    const c=document.createElement("span"); if(s.id===phase) c.className="cur"; c.textContent=`${s.name} ${pct(p.done,p.total)}%`; chips.append(c); });
+  box.append(chips);
+}
+
 /* ---------- PDF export ---------- */
 // Report look: dark cover with Lego studs, cream pages, big colour blocks, brick rank tiles, thin vote bars
 const latinOnly=s=>/^[\x00-\xFF‘-‟–—…]*$/.test(s);
@@ -1083,7 +1301,7 @@ let allBaby=[];
 async function loadAllBaby(){
   if(!adminUI()){ allBaby=[]; renderPeople(); return; }
   try{ allBaby=await api.adminBaby(); }catch(e){ toast("Could not load participants: "+(e.message||e)); allBaby=[]; }
-  renderPeople();
+  renderPeople(); renderProgress();
 }
 function people(){
   const m=new Map();
@@ -1369,7 +1587,7 @@ async function boot(){
     .on("postgres_changes",{event:"*",schema:"public",table:"commitments"},()=>later(loadCommitments))
     .on("postgres_changes",{event:"*",schema:"public",table:"settings"},()=>later(async()=>{ await loadPhase(); loadBaby(); }))
     .subscribe();
-  setInterval(()=>{ if(!dragging) loadEverything(); }, 10000); // safety net if realtime drops
+  setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 appReady=true;
 boot();
