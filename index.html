@@ -6,6 +6,7 @@
 <title>Partnership Day</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Libre+Bodoni:wght@500;600;700&family=Outfit:wght@400;500;600&family=Story+Script&display=swap" rel="stylesheet">
@@ -375,7 +376,14 @@ select{border-radius:14px;background:var(--card)}
         <label class="check"><input type="checkbox" id="eAll"> Include all Shared Wisdom sentences (default: top 15)</label>
       </div>
       <p class="hint" id="eSummary"></p>
-      <button type="button" id="pdfBtn">Download my PDF</button>
+      <div class="row"><button type="button" id="pdfBtn">Download my PDF</button><button type="button" class="ghost hide" id="shareBtn">Email to myself</button></div>
+      <p class="hint" id="shareHint" style="margin:10px 0 0"></p>
+    </div>
+    <div class="card hide" id="eAdmin" style="margin-top:18px">
+      <h3 style="margin:0 0 4px">Admin · Participant PDFs</h3>
+      <p class="hint">Re-issue a PDF for anyone who lost theirs. Each one contains that person's own Baby Steps, so send it only to them.</p>
+      <div class="row"><input id="eFind" placeholder="Search a name"><button type="button" class="ghost" id="eRefresh">Refresh</button><button type="button" id="eZip">Download all (ZIP)</button></div>
+      <div id="ePeople" class="list"></div>
     </div>
   </section>
 </main>
@@ -516,6 +524,8 @@ const api = {
     const {data,error}=await sb.from("commitments").delete().eq("id",id).select(); if(error) throw error;
     if(!data.length) throw new Error("Not allowed. Please log in as admin."); },
   // Baby Steps are private: the database only exposes them through these three functions, matched by name
+  async adminBaby(){ if(demo) return mem.baby.slice();            // admin only: every participant's steps, to re-issue a lost PDF
+    const {data,error}=await sb.rpc("admin_all_baby_steps"); if(error) throw error; return data; },
   async myBaby(name){ if(demo) return mem.baby.filter(b=>b.name.toLowerCase()===name.toLowerCase());
     const {data,error}=await sb.rpc("my_baby_steps",{p_name:name}); if(error) throw error; return data; },
   async addBaby(name,commitment,text){
@@ -566,11 +576,13 @@ function ask(msg){
 
 /* ---------- Routing + stages ---------- */
 let phase="ripples", curPage="photos", firstLoad=true;
+var appReady=false;                              // set once the whole script has run, so early route() calls stay simple
 function route(p){
   if(!PAGES.includes(p)) p="photos";
   curPage=p;
   try { history.replaceState(null, "", "#" + p); } catch(e){}
   PAGES.forEach(k=>{ $("page-"+k).classList.toggle("hide", k!==p); $("nav-"+k).classList.toggle("on", k===p); });
+  if(appReady && p==="export"){ if(adminUI()) loadAllBaby(); schedulePrepare(); }   // fresh admin list; pre-build the PDF to share
 }
 // Participants can open a page once its stage has started; the admin can open everything
 const canOpen=p=>adminUI() || stageIdx(phase)>=stageIdx(PAGE_UNLOCK[p]);
@@ -996,26 +1008,122 @@ function renderBaby(){
 function renderExport(){
   const wis=sentences.length, com=commitments.length;
   $("eSummary").textContent = `${wis} Shared Wisdom sentence${wis===1?"":"s"} · ${com} Bold Commitment${com===1?"":"s"} · ${personName()?`${myBaby.length} Baby Step${myBaby.length===1?"":"s"} found for “${personName()}”`:"enter your name to include your Baby Steps"}`;
+  renderPeople();
+  schedulePrepare();
 }
 
 /* ---------- PDF export ---------- */
 // Report look: dark cover with Lego studs, cream pages, big colour blocks, brick rank tiles, thin vote bars
 const latinOnly=s=>/^[\x00-\xFF‘-‟–—…]*$/.test(s);
+const fileName=name=>`partnership-day${name?"-"+(name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"participant"):""}.pdf`;
+async function pdfData(name,baby,all){           // everything one personal PDF needs: shared content + this person's Baby Steps
+  const ranks=ranked(), {n}=tally();
+  const d={ name, all, list:ranks, shown:all?ranks:ranks.slice(0,15), n, commitments:commitments.slice(), baby,
+    stamp:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}) };
+  d.dreams=TEAMS.concat(dreams.map(x=>x.team).filter(t=>!TEAMS.includes(t))).map(t=>({...(dreams.find(x=>x.team===t)||{team:t})}));
+  d.empty=!d.list.length && !d.commitments.length && !d.baby.length && !dreams.length;
+  const texts=[d.name,...d.list.map(s=>s.text+s.author),...d.commitments.map(c=>c.text+c.team),...d.baby.map(b=>b.text),...d.dreams.map(x=>(x.headline||"")+x.team)];
+  d.latin=!!window.jspdf && texts.every(latinOnly);
+  return d;
+}
+const imgCache={};
+async function dreamImg(url){ if(!(url in imgCache)) imgCache[url]=await coverJpeg(url,840,420).catch(()=>null); return imgCache[url]; }
+async function attachDreamImages(d){ await Promise.all(d.dreams.map(async x=>{ x.img = x.url ? await dreamImg(x.url) : null; })); }
+async function downloadPdfFor(name,baby,all){
+  const d=await pdfData(name,baby,all);
+  if(d.empty){ toast("Nothing to export yet"); return; }
+  if(d.latin){ await attachDreamImages(d); buildPdf(d).save(fileName(name)); } else printFallback(d);
+}
 $("pdfBtn").onclick=async()=>{
   $("pdfBtn").disabled=true;
+  try{ await Promise.all([loadSentences(),loadCommitments()]); await loadBaby(); await downloadPdfFor(personName(),myBaby.slice(),$("eAll").checked); }
+  finally { $("pdfBtn").disabled=false; }
+};
+
+/* ---- Email to myself: phones only. The share sheet opens with the PDF attached, so the Mail app can send it ---- */
+const isPhone=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && /Mac/i.test(navigator.platform));
+const canShareFiles=()=>isPhone && !!(navigator.share && navigator.canShare);
+let shareCache={key:"",file:null,building:false,latin:true}, prepTimer;
+const shareKey=()=>[personName(),$("eAll").checked,sentences.length,votes.length,commitments.length,dreams.map(d=>d.updated_at||d.url).join("|"),myBaby.length].join("§");
+function updateShareBtn(){
+  const ok=canShareFiles(), ready=shareCache.key===shareKey()&&shareCache.file;
+  $("shareBtn").classList.toggle("hide", !ok);       // computers don't get this button
+  $("shareHint").classList.toggle("hide", !ok);
+  $("shareBtn").textContent = ready||shareCache.latin===false ? "Email to myself" : "Preparing PDF…";
+  $("shareHint").textContent = "Tap Email to myself, then choose your Mail app in the share menu. The PDF is attached for you.";
+}
+function schedulePrepare(){
+  clearTimeout(prepTimer);
+  if(curPage!=="export"||!canOpen("export")||!canShareFiles()){ updateShareBtn(); return; }
+  prepTimer=setTimeout(prepareShare,900); updateShareBtn();
+}
+async function prepareShare(){                    // build the PDF ahead of the tap: share sheets only open right after a tap
+  if(shareCache.building) return;
+  const key=shareKey(); if(shareCache.key===key&&shareCache.file) return;
+  shareCache.building=true;
   try{
-    await Promise.all([loadSentences(),loadCommitments()]); await loadBaby();
-    const all=$("eAll").checked, ranks=ranked(), {n}=tally();
-    const d={ name:personName(), all, list:ranks, shown:all?ranks:ranks.slice(0,15), n, commitments:commitments.slice(),
-      baby:myBaby.slice(), stamp:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}) };
-    d.dreams=TEAMS.concat(dreams.map(x=>x.team).filter(t=>!TEAMS.includes(t))).map(t=>dreams.find(x=>x.team===t)||{team:t});
-    if(!d.list.length && !d.commitments.length && !d.baby.length && !dreams.length){ toast("Nothing to export yet"); return; }
-    const texts=[d.name,...d.list.map(s=>s.text+s.author),...d.commitments.map(c=>c.text+c.team),...d.baby.map(b=>b.text),...d.dreams.map(x=>(x.headline||"")+x.team)];
-    if(window.jspdf && texts.every(latinOnly)){
-      await Promise.all(d.dreams.map(async x=>{ x.img = x.url ? await coverJpeg(x.url,840,420).catch(()=>null) : null; }));
-      buildPdf(d);
-    } else printFallback(d);
-  } finally { $("pdfBtn").disabled=false; }
+    const d=await pdfData(personName(),myBaby.slice(),$("eAll").checked);
+    if(d.empty||!d.latin){ shareCache={key,file:null,building:false,latin:d.latin}; }
+    else{ await attachDreamImages(d); const blob=buildPdf(d).output("blob");
+      shareCache={key,file:new File([blob],fileName(personName()),{type:"application/pdf"}),building:false,latin:true}; }
+  }catch(e){ console.error(e); shareCache.building=false; }
+  updateShareBtn();
+}
+$("shareBtn").onclick=async()=>{
+  if(shareCache.latin===false && shareCache.key===shareKey()){ toast("This PDF has non-Latin text. Use Download my PDF, then attach it to an email."); return; }
+  if(!(shareCache.key===shareKey()&&shareCache.file)){ toast("Still preparing your PDF. Tap again in a moment."); prepareShare(); return; }
+  if(navigator.canShare({files:[shareCache.file]})===false){ toast("This phone can't share files from the browser. Use Download my PDF."); return; }
+  try{ await navigator.share({files:[shareCache.file],title:"Partnership Day",text:"My Partnership Day PDF"}); }
+  catch(e){ if(e&&e.name!=="AbortError") toast("The share menu could not open. Use Download my PDF instead."); }
+};
+$("eAll").addEventListener("change",schedulePrepare);
+
+/* ---- Admin: every participant's PDF (to re-issue a lost one) ---- */
+let allBaby=[];
+async function loadAllBaby(){
+  if(!adminUI()){ allBaby=[]; renderPeople(); return; }
+  try{ allBaby=await api.adminBaby(); }catch(e){ toast("Could not load participants: "+(e.message||e)); allBaby=[]; }
+  renderPeople();
+}
+function people(){
+  const m=new Map();
+  allBaby.forEach(b=>{ const k=b.name.trim().toLowerCase(); if(!m.has(k)) m.set(k,{name:b.name.trim(),rows:[]}); m.get(k).rows.push(b); });
+  return [...m.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
+function renderPeople(){
+  $("eAdmin").classList.toggle("hide",!adminUI());
+  if(!adminUI()) return;
+  const q=clean($("eFind").value).toLowerCase(), all=people(), list=all.filter(p=>!q||p.name.toLowerCase().includes(q));
+  $("eZip").disabled=!all.length;
+  const box=$("ePeople"); box.innerHTML="";
+  if(!list.length){ box.innerHTML=`<div class="empty">${all.length?"No one matches that name.":"No Baby Steps have been saved yet. To re-issue a PDF for someone with none, type their name in the box above and use Download my PDF."}</div>`; return; }
+  list.forEach(p=>{
+    const d=document.createElement("div"); d.className="item";
+    const t=document.createElement("div"); t.className="t"; t.textContent=p.name;
+    const sm=document.createElement("small"); sm.textContent=`${p.rows.length} Baby Step${p.rows.length===1?"":"s"}`; t.append(sm);
+    const b=document.createElement("button"); b.className="ghost"; b.textContent="PDF";
+    b.onclick=async()=>{ b.disabled=true; try{ await downloadPdfFor(p.name,p.rows,$("eAll").checked); }catch(err){ toast(err.message||String(err)); } b.disabled=false; };
+    d.append(t,b); box.append(d);
+  });
+}
+$("eFind").addEventListener("input",renderPeople);
+$("eRefresh").onclick=loadAllBaby;
+$("eZip").onclick=async()=>{
+  if(!window.JSZip){ toast("The ZIP tool did not load. Download PDFs one by one."); return; }
+  $("eZip").disabled=true; const skipped=[], used={}; const zip=new JSZip();
+  try{
+    await Promise.all([loadSentences(),loadCommitments()]);
+    for(const p of people()){
+      const d=await pdfData(p.name,p.rows,$("eAll").checked);
+      if(!d.latin){ skipped.push(p.name); continue; }
+      await attachDreamImages(d);
+      let f=fileName(p.name); used[f]=(used[f]||0)+1; if(used[f]>1) f=f.replace(".pdf",`-${used[f]}.pdf`);
+      zip.file(f,buildPdf(d).output("arraybuffer"));
+    }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(await zip.generateAsync({type:"blob"})); a.download="partnership-day-all-pdfs.zip"; a.click();
+    toast(skipped.length?`ZIP ready. Skipped (non-Latin text, download one by one): ${skipped.join(", ")}`:"ZIP ready");
+  }catch(err){ toast("Could not build the ZIP: "+(err.message||err)); }
+  $("eZip").disabled=false;
 };
 async function coverJpeg(url,w,h){               // fetch a photo and crop it to w×h so it fits a PDF cell
   const bmp=await createImageBitmap(await (await fetch(url)).blob());
@@ -1197,7 +1305,7 @@ function buildPdf(d){
     fill(C.lime); doc.rect(M,PH-14,10,1.2,"F");
     ink(C.muted); font("helvetica","normal",8);
     doc.text("Partnership Day: Our Shared Wisdom",M+14,PH-12.6); doc.text(String(p-1),PW-M,PH-12.6,{align:"right"}); }
-  doc.save("partnership-day-our-shared-wisdom.pdf");
+  return doc;
 }
 
 /* ---------- Admin ---------- */
@@ -1227,6 +1335,7 @@ function renderAdmin(){
   }
   renderAll();
   loadBaby();
+  loadAllBaby();
 }
 $("adminLink").onclick=async()=>{
   if(isAdmin){ if(sb) await sb.auth.signOut(); isAdmin=false; renderAdmin(); return; }
@@ -1262,6 +1371,7 @@ async function boot(){
     .subscribe();
   setInterval(()=>{ if(!dragging) loadEverything(); }, 10000); // safety net if realtime drops
 }
+appReady=true;
 boot();
 </script>
 </body>
