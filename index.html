@@ -404,6 +404,11 @@ select{border-radius:14px;background:var(--card)}
       </div>
       <div class="row" style="margin-top:12px"><button type="submit" id="bSubmit">Add Baby Step</button></div>
     </form>
+    <div class="card hide" id="bAdmin" style="margin-top:18px">
+      <h3 style="margin:0 0 4px">Admin · Who saved Baby Steps</h3>
+      <p class="hint">Names and counts only. The Baby Steps themselves stay private. Use this to clear test data before going live.</p>
+      <div id="bPeople" class="list"></div>
+    </div>
     <div id="bList" class="list"></div>
   </section>
 
@@ -607,6 +612,12 @@ const api = {
     if(demo){ const rows=Object.values(mem.reflections);
       return [0,1,2,3].map(i=>({question:i+1,avg_score:rows.length?rows.reduce((s,r)=>s+r[i],0)/rows.length:null,responses:rows.length})); }
     const {data,error}=await sb.rpc("admin_reflection_summary"); if(error) throw error; return data; },
+  async adminDeleteBaby(name){                     // admin only: one person's Baby Steps by name, or everyone's when name is null
+    if(demo){ mem.baby=name?mem.baby.filter(b=>b.name.toLowerCase()!==name.toLowerCase()):[]; return; }
+    const {error}=await sb.rpc("admin_delete_baby_steps",{p_name:name}); if(error) throw error; },
+  async adminDeleteReflections(){
+    if(demo){ mem.reflections={}; return; }
+    const {error}=await sb.rpc("admin_delete_reflections"); if(error) throw error; },
   async adminBaby(){ if(demo) return mem.baby.slice();            // admin only: every participant's steps, to re-issue a lost PDF
     const {data,error}=await sb.rpc("admin_all_baby_steps"); if(error) throw error; return data; },
   async myBaby(name){ if(demo) return mem.baby.filter(b=>b.name.toLowerCase()===name.toLowerCase());
@@ -1052,7 +1063,24 @@ $("bForm").addEventListener("submit", async e=>{
   catch(err){ toast("Could not save: "+(err.message||err)); }
   $("bSubmit").disabled=false;
 });
+function renderBabyAdmin(){                       // admin: who saved steps (never the text), with a delete per person
+  $("bAdmin").classList.toggle("hide",!adminUI());
+  if(!adminUI()) return;
+  const box=$("bPeople"); box.innerHTML="";
+  const ppl=people();
+  if(!ppl.length){ box.innerHTML='<div class="empty">No Baby Steps saved.</div>'; return; }
+  ppl.forEach(p=>{
+    const d=document.createElement("div"); d.className="item";
+    const t=document.createElement("div"); t.className="t"; t.textContent=p.name;
+    const sm=document.createElement("small"); sm.textContent=`${p.rows.length} Baby Step${p.rows.length===1?"":"s"}`; t.append(sm);
+    const x=document.createElement("button"); x.className="del"; x.textContent="Delete";
+    x.onclick=async()=>{ if(!await ask(`Delete all Baby Steps saved by “${p.name}”?`)) return;
+      try{ await api.adminDeleteBaby(p.name); toast("Deleted"); await loadAllBaby(); await loadBaby(); }catch(err){ toast(err.message||String(err)); } };
+    d.append(t,x); box.append(d);
+  });
+}
 function renderBaby(){
+  renderBabyAdmin();
   const open=phase==="baby"&&!proj;
   $("bForm").classList.toggle("hide", phase!=="baby");              // User Mode still shows the form, so everyone sees what this stage is
   [...$("bForm").elements].forEach(el=>{ el.disabled=proj; });      // but it is not fillable on a shared screen
@@ -1301,7 +1329,7 @@ let allBaby=[];
 async function loadAllBaby(){
   if(!adminUI()){ allBaby=[]; renderPeople(); return; }
   try{ allBaby=await api.adminBaby(); }catch(e){ toast("Could not load participants: "+(e.message||e)); allBaby=[]; }
-  renderPeople(); renderProgress();
+  renderPeople(); renderBabyAdmin(); renderProgress();
 }
 function people(){
   const m=new Map();
@@ -1542,6 +1570,8 @@ function renderAdmin(){
     for(const [id,label,fn] of [["page-photos","Delete ALL photos",async()=>{ for(const p of photos) await api.delPhoto(p); loadPhotos(); }],
                                 ["page-sentences","Delete ALL sentences",async()=>{ for(const s of sentences) await api.delSentence(s.id); loadSentences(); }],
                                 ["page-dream","Delete ALL Dreams",async()=>{ for(const d of dreams) await api.delDream(d); loadDreams(); }],
+                                ["page-baby","Delete ALL Baby Steps",async()=>{ await api.adminDeleteBaby(null); await loadAllBaby(); await loadBaby(); }],
+                                ["page-reflect","Delete ALL reflection answers",async()=>{ await api.adminDeleteReflections(); myReflect=null; try{ localStorage.removeItem("reflection"); }catch(_){} $("rForm").reset(); await loadReflectSummary(); renderReflect(); }],
                                 ["page-commit","Delete ALL commitments",async()=>{ for(const c of commitments) await api.delCommitment(c.id); loadCommitments(); }]]){
       const bar=document.createElement("div"); bar.className="adminbar";
       bar.innerHTML="<b>Admin mode</b><span class='grow'></span>";
@@ -1589,6 +1619,24 @@ async function boot(){
     .subscribe();
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
+/* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
+const BUILD="2026-10-13-a";
+async function checkVersion(){
+  if(!/^https?:/.test(location.protocol)) return;
+  try{
+    const t=await (await fetch(location.pathname+"?_="+Date.now(),{cache:"no-store"})).text();
+    const m=t.match(/const BUILD="([^"]+)"/);
+    if(m && m[1]!==BUILD && !document.getElementById("updBar")){
+      const d=document.createElement("div"); d.id="updBar"; d.className="banner warn";
+      d.append("A newer version of this page is available. ");
+      const b=document.createElement("button"); b.textContent="Refresh now"; b.onclick=()=>location.reload(); d.append(b);
+      $("banner").append(d);
+    }
+  }catch(e){}
+}
+checkVersion(); setInterval(checkVersion,60000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkVersion(); });
+
 appReady=true;
 boot();
 </script>
