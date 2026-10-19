@@ -692,6 +692,7 @@ document.querySelectorAll("nav a").forEach(a=>a.addEventListener("click", e=>{
   if(!canOpen(p)){ toast("This opens later in the workshop."); return; }
   route(p); scrollTo(0,0);
 }));
+const hadHash=!!location.hash;                   // did the visitor open a specific page link?
 route(location.hash.slice(1));
 
 function renderStage(){
@@ -717,11 +718,11 @@ function renderAll(){
 async function loadPhase(){
   try{
     const prev=phase; phase=await api.phase();
-    if(prev!==phase){
-      if(!firstLoad && !adminUI()) toast("Now open: "+STAGES[stageIdx(phase)].name);
-      if(proj) route(STAGES[stageIdx(phase)].page);
-    }
+    const target=STAGES[stageIdx(phase)].page, changed=prev!==phase&&!firstLoad;
+    if(changed && !adminUI()) toast("Now open: "+STAGES[stageIdx(phase)].name);
     renderAll();
+    // Participants (and User Mode) follow the admin: a new stage opens its page for them, and a fresh visit lands on the current stage
+    if(!adminUI() && (changed || (firstLoad && !hadHash))){ route(target); scrollTo(0,0); }
   }catch(e){ console.error(e); }
 }
 
@@ -1620,7 +1621,7 @@ async function boot(){
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 /* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
-const BUILD="2026-10-13-a";
+const BUILD="2026-10-19-a";
 async function checkVersion(){
   if(!/^https?:/.test(location.protocol)) return;
   try{
