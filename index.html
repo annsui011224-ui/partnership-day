@@ -103,6 +103,11 @@ footer a{color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underl
 .proj .wrap,.proj footer{max-width:1200px}
 .note{background:var(--soft);border-radius:14px;padding:10px 16px;margin-bottom:14px;font-size:15px}
 .note b{font-family:var(--serif);color:var(--accent)}
+.note.warn{border:2px solid var(--danger)}
+.note.warn b{color:var(--danger)}
+#myName.need{border-color:var(--danger);animation:need .5s 3}
+@keyframes need{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+@media (prefers-reduced-motion:reduce){ #myName.need{animation:none;outline:3px solid var(--danger)} }
 .vote:disabled.own{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--muted)}
 .danger{background:var(--danger);color:#fff}
 .del{position:absolute;top:6px;right:6px;z-index:2;padding:4px 10px;font-size:13px;background:var(--danger);color:#fff}
@@ -299,6 +304,7 @@ select{border-radius:14px;background:var(--card)}
   </div>
   <div id="banner"></div>
   <div class="stage" id="stageBar"></div>
+  <div class="note warn hide" id="teamNotice"><b>Choose your team first.</b> Use the “Your Team” menu at the top, then you can upload photos and send your answers.</div>
 
   <!-- PAGE 1 -->
   <section id="page-photos">
@@ -537,6 +543,17 @@ function banner(msg, warn){ $("banner").innerHTML = msg ? `<div class="banner ${
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random().toString(16).slice(2));
 let voterId; try { voterId = localStorage.getItem("voterId"); if(!voterId){ voterId = uid(); localStorage.setItem("voterId", voterId);} } catch(e){ voterId = uid(); }
 const myName = () => clean($("myName").value) || "Anonymous";
+// Guard: nothing can be uploaded or sent until a team is chosen
+function requireTeam(){
+  if(clean($("myName").value)) return true;
+  toast("Choose your team at the top first.");
+  const s=$("myName"); s.classList.remove("need"); void s.offsetWidth; s.classList.add("need");
+  s.scrollIntoView({block:"center",behavior:"smooth"});
+  return false;
+}
+function renderTeamNotice(){        // shown to anyone without a team; hidden for the admin and in User Mode
+  $("teamNotice").classList.toggle("hide", !!clean($("myName").value) || (appReady && (adminUI()||proj)));
+}
 try { $("myName").value = localStorage.getItem("myName") || ""; } catch(e){}
 $("myName").addEventListener("change", ()=>{ try{ localStorage.setItem("myName", $("myName").value); }catch(e){} });
 
@@ -713,7 +730,7 @@ function renderStage(){
   }
 }
 function renderAll(){
-  renderStage(); applyNav(); renderPhotos(); renderSentences(); renderDream(); renderCommit(); renderMatrix(); renderBaby(); renderExport(); renderReflect();
+  renderStage(); applyNav(); renderPhotos(); renderSentences(); renderDream(); renderCommit(); renderMatrix(); renderBaby(); renderExport(); renderReflect(); renderTeamNotice();
 }
 async function loadPhase(){
   try{
@@ -758,7 +775,9 @@ async function shrink(file){
     return await new Promise(r=>c.toBlob(r,"image/jpeg",0.85));
   }catch(e){ return file; }
 }
+$("file").addEventListener("click", e=>{ if(!requireTeam()) e.preventDefault(); });   // stops the file picker from opening
 $("file").addEventListener("change", async e=>{
+  if(!requireTeam()){ e.target.value=""; return; }
   const files=[...e.target.files]; e.target.value="";
   let done=0;
   for(const f of files){
@@ -793,6 +812,7 @@ applyTpl();
 
 $("form").addEventListener("submit", async e=>{
   e.preventDefault(); const text=composed(); if(!text) return;
+  if(!requireTeam()) return;
   $("submitBtn").disabled=true;
   try{ await api.addSentence(tpl.id,text,myName()); $("inA").value=""; $("inB").value=""; updatePreview(); toast("Added!"); await loadSentences(); }
   catch(err){ toast("Could not add: "+(err.message||err)); }
@@ -809,7 +829,8 @@ function ranked(){
   return sentences.slice().sort((a,b)=>(n[b.id]||0)-(n[a.id]||0) || a.created_at.localeCompare(b.created_at));
 }
 const myTeam=()=>clean($("myName").value).toLowerCase();
-$("myName").addEventListener("input",()=>{ renderSentences(); renderDream(); renderCommit(); renderMatrix(); });
+$("myName").addEventListener("input",()=>{ $("myName").classList.remove("need"); renderTeamNotice(); renderSentences(); renderDream(); renderCommit(); renderMatrix(); });
+renderTeamNotice();
 function renderSentences(){
   const writing=phase==="writing", voting=phase==="voting", results=stageIdx(phase)>=stageIdx("dream");
   const showVotes=voting||results, ranking=results||(sortOn&&voting);
@@ -848,6 +869,7 @@ function renderSentences(){
   });
 }
 async function toggleVote(id,has){
+  if(!requireTeam()) return;
   try{ has ? await api.unvote(id) : await api.vote(id); votes=await api.votes(); renderSentences(); }
   catch(err){ toast(String(err.message||err).replace(/^.*Vote limit/,"Vote limit")); }
 }
@@ -889,7 +911,7 @@ function renderDream(){
 $("dForm").addEventListener("submit", async e=>{
   e.preventDefault();
   const team=myName(), headline=clean($("dHead").value), file=$("dFile").files[0], mine=dreams.find(d=>d.team===team);
-  if(!myTeam()){ toast("Choose your team at the top first."); return; }
+  if(!requireTeam()) return;
   if(!headline||(!file&&!mine)) return;
   $("dSubmit").disabled=true; $("dStatus").textContent="Uploading…";
   try{
@@ -918,7 +940,7 @@ $("cA").addEventListener("input",updateCPreview); $("cB").addEventListener("inpu
 applyCat();
 $("cForm").addEventListener("submit", async e=>{
   e.preventDefault(); const t=cText(); if(!t) return;
-  if(!myTeam()){ toast("Choose your team at the top first."); return; }
+  if(!requireTeam()) return;
   $("cSubmit").disabled=true;
   try{ await api.addCommitment(cat.id,t,myName()); $("cA").value=""; $("cB").value=""; updateCPreview(); toast("Added!"); await loadCommitments(); }
   catch(err){ toast("Could not add: "+(err.message||err)); }
@@ -1059,6 +1081,7 @@ async function loadBaby(){
 $("bForm").addEventListener("submit", async e=>{
   e.preventDefault(); const n=personName(), cid=$("bCommit").value, t=clean($("bText").value);
   if(!n||!cid||!t) return;
+  if(!requireTeam()) return;
   $("bSubmit").disabled=true;
   try{ await api.addBaby(n,cid,t); $("bText").value=""; toast("Saved privately ✓"); await loadBaby(); }
   catch(err){ toast("Could not save: "+(err.message||err)); }
@@ -1165,6 +1188,7 @@ $("rForm").addEventListener("submit", async e=>{
   e.preventDefault();
   const a=REFLECT_QS.map((_,i)=>{ const r=$("rForm").querySelector(`input[name=rq${i}]:checked`); return r?+r.value:0; });
   if(a.some(v=>!v)) return;
+  if(!requireTeam()) return;
   $("rSubmit").disabled=true;
   try{ await api.submitReflection(a); myReflect=a; try{ localStorage.setItem("reflection",JSON.stringify(a)); }catch(_){}
     toast("Thank you ✓"); renderReflect(); $("rStatus").textContent="Saved. You can change your answers until this stage closes."; loadReflectSummary(); }
@@ -1621,7 +1645,7 @@ async function boot(){
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 /* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
-const BUILD="2026-10-19-a";
+const BUILD="2026-10-20-a";
 async function checkVersion(){
   if(!/^https?:/.test(location.protocol)) return;
   try{
