@@ -57,8 +57,13 @@ h2{margin:0 0 4px;font-size:22px}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 #lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:20;flex-direction:column;padding:16px}
 #lb.open{display:flex}
-#lb img{max-width:100%;max-height:82vh;border-radius:8px}
-#lb p{color:#fff;margin:10px 0 0;font-size:14px}
+#lb{overflow:hidden}
+#lb img{max-width:100%;max-height:78vh;border-radius:8px;transform-origin:0 0;touch-action:none;user-select:none;-webkit-user-drag:none;cursor:zoom-in}
+#lb p{color:#fff;margin:10px 0 0;font-size:14px;position:relative;z-index:2;text-shadow:0 1px 4px rgba(0,0,0,.8);text-align:center}
+#lb .lbhint{font-size:12px;opacity:.75;margin-top:4px}
+.lbctl{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:3}
+.lbctl button.ghost{background:rgba(0,0,0,.45);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.7);font-family:var(--sans);font-style:normal;font-size:18px;padding:8px 18px;min-width:48px}
+#lb .x{z-index:3}
 #lb .x{position:absolute;top:12px;right:12px;background:rgba(255,255,255,.18);color:#fff;padding:8px 14px}
 /* sentences */
 .tpls{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:14px}
@@ -469,7 +474,8 @@ select{border-radius:14px;background:var(--card)}
   <button type="button" class="ghost" id="loginCancel">Cancel</button>
 </form></div>
 <div id="ask"><div class="box"><p id="askMsg"></p><div class="row"><button type="button" class="danger" id="askYes">Delete</button><button type="button" class="ghost" id="askNo">Cancel</button></div></div></div>
-<div id="lb"><button class="x" id="lbClose">✕ Close</button><img id="lbImg" alt=""><p id="lbCap"></p></div>
+<div id="lb"><button class="x" id="lbClose">✕ Close</button><img id="lbImg" alt=""><p id="lbCap"></p><p class="lbhint">Scroll, pinch or double-tap to zoom. Drag to move.</p>
+  <div class="lbctl"><button type="button" class="ghost" id="lbOut" aria-label="Zoom out">−</button><button type="button" class="ghost" id="lbReset">Reset</button><button type="button" class="ghost" id="lbIn" aria-label="Zoom in">＋</button></div></div>
 <div id="toast"></div>
 <div id="printArea"></div>
 
@@ -761,10 +767,68 @@ function renderPhotos(){
     g.append(f);
   }
 }
-function openLb(p){ $("lbImg").src=p.url; $("lbCap").textContent="Shared by "+p.author; $("lb").classList.add("open"); }
-function closeLb(){ $("lb").classList.remove("open"); }
-$("lb").addEventListener("click", e=>{ if(e.target.id!=="lbImg") closeLb(); });
-addEventListener("keydown", e=>{ if(e.key==="Escape") closeLb(); });
+/* Lightbox with zoom: wheel / pinch / double-tap / buttons to zoom, drag to move */
+const lbz={s:1,x:0,y:0}, lbPts=new Map();
+let lbPinch=null, lbMoved=false, lbLastTap={t:0,x:0,y:0}, lbDownAt=0, lbQuiet=0;
+function showLightbox(url,caption){ lbReset(); $("lbImg").src=url; $("lbCap").textContent=caption; $("lb").classList.add("open"); }
+function openLb(p){ showLightbox(p.url,"Shared by "+p.author); }
+function closeLb(){ $("lb").classList.remove("open"); lbReset(); }
+const lbClamp01=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+function lbApply(){
+  const img=$("lbImg"), w=img.offsetWidth, h=img.offsetHeight;
+  lbz.s=lbClamp01(lbz.s,1,6); lbz.x=lbClamp01(lbz.x,w-w*lbz.s,0); lbz.y=lbClamp01(lbz.y,h-h*lbz.s,0);   // never pan the photo off its own frame
+  img.style.transform=`translate(${lbz.x}px,${lbz.y}px) scale(${lbz.s})`;
+  img.style.cursor=lbz.s>1?"grab":"zoom-in";
+}
+function lbReset(){ lbz.s=1; lbz.x=0; lbz.y=0; lbPts.clear(); lbPinch=null; $("lbImg").style.transform=""; $("lbImg").style.cursor="zoom-in"; }
+function lbZoomAt(px,py,s2){                    // zoom so the point under the finger/cursor stays put
+  const r=$("lbImg").getBoundingClientRect(), bx=r.left-lbz.x, by=r.top-lbz.y;
+  const u=(px-bx-lbz.x)/lbz.s, v=(py-by-lbz.y)/lbz.s;
+  lbz.s=lbClamp01(s2,1,6); lbz.x=px-bx-u*lbz.s; lbz.y=py-by-v*lbz.s; lbApply();
+}
+const lbCenter=()=>{ const r=$("lbImg").getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]; };
+$("lb").addEventListener("click", e=>{
+  if(Date.now()<lbQuiet) return;                // a drag that ended on the backdrop is not a tap to close
+  if(e.target===$("lb")||e.target.id==="lbClose") closeLb();
+});
+$("lb").addEventListener("wheel", e=>{ if(!$("lb").classList.contains("open")) return; e.preventDefault(); lbZoomAt(e.clientX,e.clientY,lbz.s*(e.deltaY<0?1.2:1/1.2)); },{passive:false});
+$("lbIn").onclick=()=>{ const [x,y]=lbCenter(); lbZoomAt(x,y,lbz.s*1.5); };
+$("lbOut").onclick=()=>{ const [x,y]=lbCenter(); lbZoomAt(x,y,lbz.s/1.5); };
+$("lbReset").onclick=lbReset;
+(()=>{
+  const img=$("lbImg");
+  img.addEventListener("pointerdown",e=>{
+    e.preventDefault(); try{ img.setPointerCapture(e.pointerId); }catch(_){}
+    lbPts.set(e.pointerId,{x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY});
+    lbDownAt=Date.now(); lbMoved=false;
+    if(lbPts.size===2){ const [a,b]=[...lbPts.values()]; lbPinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1, s:lbz.s}; }
+  });
+  img.addEventListener("pointermove",e=>{
+    const p=lbPts.get(e.pointerId); if(!p) return;
+    const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(Math.hypot(e.clientX-p.sx,e.clientY-p.sy)>6){ lbMoved=true; lbQuiet=Date.now()+350; }
+    if(lbPts.size===2 && lbPinch){
+      const [a,b]=[...lbPts.values()], d=Math.hypot(a.x-b.x,a.y-b.y)||1;
+      lbZoomAt((a.x+b.x)/2,(a.y+b.y)/2,lbPinch.s*d/lbPinch.d);
+    } else if(lbPts.size===1 && lbz.s>1){ lbz.x+=dx; lbz.y+=dy; lbApply(); }
+  });
+  const end=e=>{
+    const p=lbPts.get(e.pointerId); lbPts.delete(e.pointerId); if(lbPts.size<2) lbPinch=null;
+    if(!p||e.type==="pointercancel"||lbMoved||Date.now()-lbDownAt>350) return;
+    const now=Date.now();                        // double-tap / double-click toggles between fit and zoomed-in
+    if(now-lbLastTap.t<350 && Math.hypot(e.clientX-lbLastTap.x,e.clientY-lbLastTap.y)<30){
+      lbLastTap.t=0; if(lbz.s>1) lbReset(); else lbZoomAt(e.clientX,e.clientY,2.5);
+    } else lbLastTap={t:now,x:e.clientX,y:e.clientY};
+  };
+  img.addEventListener("pointerup",end); img.addEventListener("pointercancel",end);
+})();
+addEventListener("keydown", e=>{
+  if(!$("lb").classList.contains("open")) return;
+  if(e.key==="Escape") closeLb();
+  else if(e.key==="+"||e.key==="=") $("lbIn").click();
+  else if(e.key==="-") $("lbOut").click();
+  else if(e.key==="0") lbReset();
+});
 
 async function shrink(file){
   try{
@@ -896,7 +960,7 @@ function renderDream(){
     card.className="dcard "+(d?"has":"wait");
     const ph=document.createElement("div"); ph.className="ph";
     if(d){ const img=document.createElement("img"); img.src=d.url; img.loading="lazy"; img.alt=d.headline; ph.append(img);
-      ph.onclick=()=>{ $("lbImg").src=d.url; $("lbCap").textContent=`${d.headline} — ${d.team}`; $("lb").classList.add("open"); }; }
+      ph.onclick=()=>showLightbox(d.url,`${d.headline} — ${d.team}`); }
     else ph.textContent="Waiting for a photo…";
     const cap=document.createElement("div"); cap.className="cap";
     const b=document.createElement("b"); b.textContent=d?d.headline:"No headline yet";
@@ -1645,7 +1709,7 @@ async function boot(){
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 /* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
-const BUILD="2026-10-20-a";
+const BUILD="2026-10-20-b";
 async function checkVersion(){
   if(!/^https?:/.test(location.protocol)) return;
   try{
