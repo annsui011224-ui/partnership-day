@@ -294,7 +294,7 @@ select{border-radius:14px;background:var(--card)}
       <a href="#reflect" id="nav-reflect">Reflection</a>
     </nav>
     <label class="name">Your Team
-      <select id="myName"><option value="">Choose team</option><option>Team 1</option><option>Team 2</option><option>Team 3</option><option>Team 4</option><option>Team 5</option><option>Team 6</option></select>
+      <select id="myName"><option value="">Choose team</option><option>Team 1</option><option>Team 2</option><option>Team 3</option><option>Team 4</option><option>Team 5</option></select>
     </label>
   </div>
 </header>
@@ -508,7 +508,9 @@ const STAGES=[
   {id:"export",  name:"Export",              page:"export",    what:"Download your PDF: Shared Wisdom, Bold Commitments and your Baby Steps."},
   {id:"reflection", name:"Reflection",       page:"reflect",   what:"Answer four short questions about today. Only the group average is shown."},
 ];
-const EXPECTED_TEAMS=6, EXPECTED_PEOPLE=24;      // used for the admin's completion bars
+const EXPECTED_TEAMS=5;                          // used for the admin's completion bars
+const PEOPLE_BEFORE_DREAM=23, PEOPLE_FROM_DREAM=20;   // headcount changes at the Dream stage
+const expectedPeople=stageId=>stageIdx(stageId)<stageIdx("dream") ? PEOPLE_BEFORE_DREAM : PEOPLE_FROM_DREAM;
 const stageIdx=id=>Math.max(0,STAGES.findIndex(s=>s.id===id));
 const PAGES=["photos","sentences","dream","commit","matrix","baby","export","reflect"];
 const PAGE_UNLOCK={photos:"ripples",sentences:"writing",dream:"dream",commit:"commit",matrix:"matrix",baby:"baby",export:"export",reflect:"reflection"};
@@ -1295,7 +1297,7 @@ function renderReflectAdmin(){
   const by={}; reflectSummary.forEach(r=>{ by[r.question]=r; });
   const avgs=REFLECT_QS.map((_,i)=>by[i+1]&&by[i+1].avg_score!=null?Number(by[i+1].avg_score):null);
   const n=reflectSummary.length?Math.max(...reflectSummary.map(r=>Number(r.responses))):0;
-  $("rCount").textContent=`${n} of ${EXPECTED_PEOPLE} participants have answered. Center = 0, outer ring = 5.`;
+  $("rCount").textContent=`${n} of ${expectedPeople("reflection")} participants have answered. Center = 0, outer ring = 5.`;
   const rad=$("rRadar"); rad.innerHTML=""; rad.append(radarSVG(avgs));
   const box=$("rTable"); box.innerHTML="";
   REFLECT_QS.forEach((q,i)=>{
@@ -1316,16 +1318,16 @@ function progressFor(id){
     case "writing":{ const d=teamSet(sentences.map(s=>s.author)).size; return {done:d,total:EXPECTED_TEAMS,unit:"teams",detail:`${d} of ${EXPECTED_TEAMS} teams added a sentence · ${sentences.length} sentences in total`}; }
     case "voting":{ const per={}; votes.forEach(v=>{ per[v.voter_id]=(per[v.voter_id]||0)+1; });
       const full=Object.values(per).filter(c=>c>=MAX_VOTES).length, any=Object.keys(per).length;
-      return {done:full,total:EXPECTED_PEOPLE,unit:"people",detail:`${full} used all ${MAX_VOTES} votes · ${any} voted at all`}; }
+      return {done:full,total:expectedPeople("voting"),unit:"people",detail:`${full} used all ${MAX_VOTES} votes · ${any} voted at all`}; }
     case "dream":{ const d=teamSet(dreams.map(x=>x.team)).size; return {done:d,total:EXPECTED_TEAMS,unit:"teams",detail:`${d} of ${EXPECTED_TEAMS} teams shared a Dream`}; }
     case "commit":{ const by={}; commitments.forEach(c=>{ (by[c.team]=by[c.team]||[]).push(c); });
       const ok=TEAMS.filter(t=>by[t]&&by[t].length>=2&&new Set(by[t].map(c=>c.category)).size>=2).length, started=TEAMS.filter(t=>by[t]).length;
       return {done:ok,total:EXPECTED_TEAMS,unit:"teams",detail:`${ok} teams have 2+ commitments from different categories · ${started} teams started · ${commitments.length} commitments`}; }
     case "matrix":{ const placed=commitments.filter(c=>c.x!=null).length;
       return {done:placed,total:commitments.length,unit:"commitments",detail:commitments.length?`${placed} of ${commitments.length} commitments placed on the matrix`:"No commitments yet"}; }
-    case "baby":{ const n=people().length; return {done:n,total:EXPECTED_PEOPLE,unit:"people",detail:`${n} of ${EXPECTED_PEOPLE} people saved at least one Baby Step`}; }
+    case "baby":{ const n=people().length; const t=expectedPeople("baby"); return {done:n,total:t,unit:"people",detail:`${n} of ${t} people saved at least one Baby Step`}; }
     case "reflection":{ const n=reflectSummary.length?Math.max(...reflectSummary.map(r=>Number(r.responses))):0;
-      return {done:n,total:EXPECTED_PEOPLE,unit:"people",detail:`${n} of ${EXPECTED_PEOPLE} people answered`}; }
+      const t=expectedPeople("reflection"); return {done:n,total:t,unit:"people",detail:`${n} of ${t} people answered`}; }
   }
   return null;                                    // Export: downloads are not tracked
 }
@@ -1709,7 +1711,7 @@ async function boot(){
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 /* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
-const BUILD="2026-10-20-b";
+const BUILD="2026-10-21-b";
 async function checkVersion(){
   if(!/^https?:/.test(location.protocol)) return;
   try{
