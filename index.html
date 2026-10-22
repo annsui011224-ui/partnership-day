@@ -276,6 +276,9 @@ select{border-radius:14px;background:var(--card)}
   body>*:not(#printArea){display:none!important}
   #printArea{display:block;color:#000;background:#fff;padding:20px}
   #printArea li{margin-bottom:8px}
+  #printArea .shot{display:inline-block;width:31%;vertical-align:top;margin:0 1% 12px;break-inside:avoid}
+  #printArea .shot img{width:100%;height:auto;display:block}
+  #printArea .shot figcaption{font-size:12px}
 }
 </style>
 </head>
@@ -1351,21 +1354,39 @@ function renderProgress(){
 
 /* ---------- PDF export ---------- */
 // Report look: dark cover with Lego studs, cream pages, big colour blocks, brick rank tiles, thin vote bars
-const latinOnly=s=>/^[\x00-\xFF‘-‟–—…]*$/.test(s);
+// jsPDF's built-in fonts only draw Latin text. Punctuation from other keyboards (、 “ ” …) is converted here, so one stray
+// character no longer sends everyone's PDF to the plain print fallback. Only real CJK text still needs the print route.
+const CJK_RE=/[⺀-鿿가-힯豈-﫿]/;
+const CJK_PUNCT={"、":", ","，":", ","。":". ","：":": ","；":"; ","！":"! ","？":"? ","（":" (","）":") ","「":'"',"」":'"',"『":'"',"』":'"',"《":'"',"》":'"',"【":"[","】":"]","～":"~"};
+function pdfSafe(v){
+  let s=String(v==null?"":v).replace(/[、，。：；！？（）「」『』《》【】～]/g,ch=>CJK_PUNCT[ch]||ch)
+    .replace(/[‘’‚‛]/g,"'").replace(/[“-‟]/g,'"').replace(/[–—−]/g,"-")
+    .replace(/…/g,"...").replace(/[•●]/g,"-").replace(/[  -​⁠﻿]/g," ");
+  s=s.replace(/[^\x00-\xFF]/g,ch=>CJK_RE.test(ch)?ch:"");        // keep CJK so it can be detected; drop emoji and other unsupported symbols
+  return s.replace(/\s+/g," ").trim();
+}
+const RIPPLE_MAX=30;                             // photos shown on the Ripple Wall pages of the PDF
 const fileName=name=>`partnership-day${name?"-"+(name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"participant"):""}.pdf`;
 async function pdfData(name,baby,all){           // everything one personal PDF needs: shared content + this person's Baby Steps
-  const ranks=ranked(), {n}=tally();
-  const d={ name, all, list:ranks, shown:all?ranks:ranks.slice(0,15), n, commitments:commitments.slice(), baby,
+  const S=pdfSafe, ranks=ranked().map(s=>({...s,text:S(s.text),author:S(s.author)})), {n}=tally();
+  const d={ name:S(name), all, list:ranks, shown:all?ranks:ranks.slice(0,15), n,
+    commitments:commitments.map(c=>({...c,text:S(c.text),team:S(c.team)})), baby:baby.map(b=>({...b,text:S(b.text)})),
     stamp:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}) };
-  d.dreams=TEAMS.concat(dreams.map(x=>x.team).filter(t=>!TEAMS.includes(t))).map(t=>({...(dreams.find(x=>x.team===t)||{team:t})}));
-  d.empty=!d.list.length && !d.commitments.length && !d.baby.length && !dreams.length;
-  const texts=[d.name,...d.list.map(s=>s.text+s.author),...d.commitments.map(c=>c.text+c.team),...d.baby.map(b=>b.text),...d.dreams.map(x=>(x.headline||"")+x.team)];
-  d.latin=!!window.jspdf && texts.every(latinOnly);
+  d.dreams=TEAMS.concat(dreams.map(x=>x.team).filter(t=>!TEAMS.includes(t))).map(t=>{ const x=dreams.find(x=>x.team===t); return x?{...x,headline:S(x.headline),team:S(x.team)}:{team:t}; });
+  d.ripple=photos.slice().reverse().map(p=>({url:p.url,team:S(p.author)}));       // oldest first
+  d.empty=!d.list.length && !d.commitments.length && !d.baby.length && !dreams.length && !photos.length;
+  const texts=[d.name,...d.list.map(s=>s.text+s.author),...d.commitments.map(c=>c.text+c.team),...d.baby.map(b=>b.text),...d.dreams.map(x=>(x.headline||"")+x.team),...d.ripple.map(x=>x.team)];
+  d.latin=!!window.jspdf && !texts.some(t=>CJK_RE.test(t));
   return d;
 }
 const imgCache={};
-async function dreamImg(url){ if(!(url in imgCache)) imgCache[url]=await coverJpeg(url,840,420).catch(()=>null); return imgCache[url]; }
-async function attachDreamImages(d){ await Promise.all(d.dreams.map(async x=>{ x.img = x.url ? await dreamImg(x.url) : null; })); }
+async function cachedCover(url,w,h){ const k=`${w}x${h}|${url}`; if(!(k in imgCache)) imgCache[k]=await coverJpeg(url,w,h).catch(()=>null); return imgCache[k]; }
+async function attachDreamImages(d){             // loads every photo the PDF shows: Ripple Wall and Dream
+  await Promise.all([
+    ...d.dreams.map(async x=>{ x.img = x.url ? await cachedCover(x.url,840,420) : null; }),
+    ...d.ripple.slice(0,RIPPLE_MAX).map(async x=>{ x.img = await cachedCover(x.url,660,495); })
+  ]);
+}
 async function downloadPdfFor(name,baby,all){
   const d=await pdfData(name,baby,all);
   if(d.empty){ toast("Nothing to export yet"); return; }
@@ -1472,17 +1493,24 @@ async function coverJpeg(url,w,h){               // fetch a photo and crop it to
 function printFallback(d){
   const p=$("printArea"); p.innerHTML="";
   const add=(tag,txt)=>{ const e=document.createElement(tag); e.textContent=txt; p.append(e); return e; };
+  const addShot=(url,cap)=>{                     // a photo with its caption, so the print version keeps the pictures too
+    const f=document.createElement("figure"); f.className="shot"; const i=document.createElement("img"); i.src=url; i.alt=cap;
+    const c=document.createElement("figcaption"); c.textContent=cap; f.append(i,c); p.append(f); return f; };
   add("h1","Partnership Day: Our Shared Wisdom"); add("p",d.stamp+(d.name?" · "+d.name:""));
+  if(d.ripple.length){ add("h2","Ripple Wall"); d.ripple.forEach(x=>addShot(x.url,x.team)); }
   add("h2","Shared Wisdom"); const ol=add("ol","");
   d.shown.forEach(s=>{ const li=document.createElement("li"); li.textContent=`${s.text}  (${d.n[s.id]||0} votes, by ${s.author})`; ol.append(li); });
   add("h2","Dream");
-  d.dreams.filter(x=>x.headline).forEach(x=>add("p",`${x.team}: ${x.headline}`));
+  d.dreams.filter(x=>x.headline).forEach(x=>{ const f=addShot(x.url,`${x.team}: ${x.headline}`); });
   add("h2","Bold Commitments");
   d.commitments.forEach(c=>add("p",`#${cNum(c)} [${c.category}] ${c.text} — ${c.team}${quadrant(c)?" ("+quadrant(c)+")":""}`));
   add("h2","Your Baby Steps (private)");
   if(!d.baby.length) add("p","No Baby Steps found.");
   d.baby.forEach(b=>{ const c=d.commitments.find(c=>c.id===b.commitment_id); add("p",`• ${b.text}${c?`  (toward #${cNum(c)})`:""}`); });
-  toast("Choose “Save as PDF” in the print dialog"); setTimeout(()=>print(),300);
+  toast("Choose “Save as PDF” in the print dialog");
+  const imgs=[...p.querySelectorAll("img")];     // wait for the photos so they are not missing from the printout
+  Promise.race([Promise.all(imgs.map(i=>i.complete?1:new Promise(r=>{ i.onload=i.onerror=r; }))), new Promise(r=>setTimeout(r,6000))])
+    .then(()=>setTimeout(()=>print(),200));
 }
 function buildPdf(d){
   const doc=new window.jspdf.jsPDF({unit:"mm",format:"a4"});
@@ -1516,6 +1544,24 @@ function buildPdf(d){
   doc.text(`${plural(d.list.length,"sentence")}  ·  ${plural(d.commitments.length,"commitment")}  ·  ${plural(allTeams.size,"team")}`,M,104);
   doc.text(d.name?`Prepared for ${d.name}  ·  ${d.stamp}`:d.stamp,M,111);
   let bx=M; [[34,C.lime],[22,C.cream],[46,C.orange],[22,C.coral],[34,C.cream]].forEach(([w,c])=>{ brick(bx,126,w,10,c); bx+=w+3; });
+
+  // --- Ripple Wall: the photos every team shared ---
+  const shots=d.ripple.slice(0,RIPPLE_MAX);
+  if(shots.length){
+    head("RIPPLE WALL","Our Team Ripples");
+    const cols=3, gap=5, colW=(W-gap*(cols-1))/cols, imgH=colW*0.75;
+    for(let i=0;i<shots.length;i+=cols){
+      const rowH=imgH+11; ensure(rowH);
+      shots.slice(i,i+cols).forEach((x,k)=>{
+        const cx=M+k*(colW+gap);
+        if(x.img) doc.addImage(x.img,"JPEG",cx,y,colW,imgH);
+        else { fill(C.line); doc.roundedRect(cx,y,colW,imgH,2,2,"F"); ink(C.muted); font("helvetica","italic",8); doc.text("Photo unavailable",cx+colW/2,y+imgH/2,{align:"center"}); }
+        ink(C.blue); font("helvetica","bold",8.5); doc.text((x.team||"").toUpperCase(),cx,y+imgH+5);
+      });
+      y+=rowH;
+    }
+    if(d.ripple.length>shots.length){ ensure(8); ink(C.muted); font("helvetica","italic",9); doc.text(`Showing ${shots.length} of ${d.ripple.length} photos.`,M,y); y+=8; }
+  }
 
   // --- 1. Shared Wisdom ---
   if(d.list.length){
@@ -1711,7 +1757,7 @@ async function boot(){
   setInterval(()=>{ if(!dragging) loadEverything(); if(adminUI()){ loadAllBaby(); loadReflectSummary(); } }, 10000); // safety net if realtime drops; admin also polls the private tables
 }
 /* ---------- Stale-version check: phones keep old copies of this page, which then misread newer stages ---------- */
-const BUILD="2026-10-21-b";
+const BUILD="2026-10-22-a";
 async function checkVersion(){
   if(!/^https?:/.test(location.protocol)) return;
   try{
